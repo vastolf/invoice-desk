@@ -224,12 +224,8 @@ export function reconcile(snapshot: Snapshot, previousLinks: InvoiceLink[] = [])
     const memoDestinations = unique(
       exactMemo.map((x) => `${x.p.deliveryMethod}/${x.p.storeId ?? ''}`),
     );
-    if (destinations.length === 1) {
-      deliveryMethod = trusted[0].p.deliveryMethod as Draft['deliveryMethod'];
-      storeId = trusted[0].p.storeId;
-      e.push(evidence('delivery', 'invoice_history', trusted, [deliveryMethod]));
-      e.push(evidence('store', 'invoice_history', trusted, storeId ? [storeId] : []));
-    } else if (memoDestinations.length === 1) {
+    const memoStores = storeMatches(source.memo, snapshot.options.stores);
+    if (memoDestinations.length === 1) {
       deliveryMethod = exactMemo[0].p.deliveryMethod as Draft['deliveryMethod'];
       storeId = exactMemo[0].p.storeId;
       e.push(evidence('delivery', 'memo_history', exactMemo, [deliveryMethod]));
@@ -237,17 +233,15 @@ export function reconcile(snapshot: Snapshot, previousLinks: InvoiceLink[] = [])
     } else {
       if (deliveryMethod)
         e.push(evidence('delivery', 'invoice_history', trusted, [deliveryMethod]));
-      const fromClient = storeMatches(source.clientName, snapshot.options.stores);
-      if (!deliveryMethod && client.classification === 'same_chain' && fromClient.length === 1)
-        deliveryMethod = 'Direct to Store';
-      if (deliveryMethod === 'Direct to Store' && fromClient.length === 1) {
-        storeId = fromClient[0].id;
-        e.push(evidence('store', 'client_name', [], [storeId]));
-      } else if (deliveryMethod) {
-        const fromMemo = storeMatches(source.memo, snapshot.options.stores);
-        if (fromMemo.length === 1) {
-          storeId = fromMemo[0].id;
+      if (deliveryMethod) {
+        if (memoStores.length === 1) {
+          storeId = memoStores[0].id;
           e.push(evidence('store', 'memo_store', [], [storeId]));
+        } else if (memoStores.length > 1) {
+          issues.push('The invoice memo names multiple final stores. Select the correct store.');
+        } else if (destinations.length === 1) {
+          storeId = trusted[0].p.storeId;
+          e.push(evidence('store', 'invoice_history', trusted, storeId ? [storeId] : []));
         }
       }
     }
@@ -383,12 +377,31 @@ export function reconcile(snapshot: Snapshot, previousLinks: InvoiceLink[] = [])
       issues.push('No portal match was found for this closed or unavailable Encompass invoice.');
     } else {
       workNeeded = 'submit';
+      const stickerBrands = snapshot.options.brands
+        .filter(
+          (brand) =>
+            draft.brandIds.includes(brand.id) &&
+            ['emeraldsky', 'uncleernies'].includes(normalized(brand.name)),
+        )
+        .map((brand) => brand.name);
+      if (stickerBrands.length) {
+        if (deliveryMethod === 'Direct to Store') {
+          deliveryMethod = '';
+          storeId = null;
+          draft = { ...draft, deliveryMethod, storeId };
+        }
+        issues.push(
+          `${stickerBrands.join(' and ')} packaging has printed MSRP. Warehouse sticker overlay is required before hub delivery. Verify the delivery method and final store against the invoice memo.`,
+        );
+      }
       if (!distributorId) issues.push('Distributor could not be resolved.');
       if (!deliveryMethod)
         issues.push(
-          methods.length > 1
-            ? `Client history has multiple delivery methods: ${methods.join(', ')}.`
-            : 'Delivery method could not be resolved from client history.',
+          stickerBrands.length && methods.length === 1 && methods[0] === 'Direct to Store'
+            ? 'Direct-to-store history conflicts with the hub workflow. Select CK Distribution or RCP Northside.'
+            : methods.length > 1
+              ? `Client history has multiple delivery methods: ${methods.join(', ')}.`
+              : 'Delivery method could not be resolved from client history.',
         );
       if (deliveryMethod && deliveryMethod !== 'CK Distribution' && !storeId)
         issues.push('The invoice destination could not be resolved.');

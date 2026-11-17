@@ -48,3 +48,30 @@ This project automates copying invoice details and attachments from Encompass in
 - The portal has conditional Rep header/file editing despite its submission-page warning. Availability can close after intake, acceptance, credit, manager, archive, or payment actions. An edit form is not proof of a guaranteed future save or undo.
 - Preserve Encompass order-minimum checks and task linking. Do not implement the final step as an unconditional `UpdateTaskStatus` call.
 - Do not blindly retry a timed-out write. Reconcile the remote invoice/task before retrying.
+
+## Distribution-hub invoices
+
+- Katie identified Emerald Sky and Uncle Ernie's packaging as having printed MSRP. Her warehouse applies an overlay sticker before these goods go to a Perfect Union distribution hub. The app cannot verify that physical step; show the specific review note for new submissions involving those brands. Clear a direct-to-store route inferred from history for these invoices so the operator selects the appropriate hub method.
+- CK Distribution and RCP Northside are delivery methods in the portal. The portal final store is a separate field and can be named in the Encompass invoice memo even when the source customer/PDF address points to a hub. Check the current invoice memo before reusing a historical final store.
+- An invoice-specific, unambiguous memo store may resolve the final store when the delivery method is independently established. A store name or brand alone does not establish the delivery method. If route or store evidence conflicts or is absent, leave the field unresolved for operator review. Respect the portal's method-specific store choices and optional CK store rule.
+
+## Change contract
+
+- Preserve the local React/Node/Playwright/SQLite architecture and the `Adapter` boundary. Keep remote reads and writes in adapters, orchestration and recovery in the engine, deterministic mappings in reconciliation, durable state in the store, and display logic in the frontend.
+- Make the smallest change that solves the request. Keep types and validation consistent across frontend, API, worker, and adapter. Check the operator's actual selection and current source/portal state before any live write. A request to change code never authorizes processing additional production invoices.
+- Add or update synthetic tests for consequential mapping, authorization, duplicate, hold, and recovery changes. Run `npm test` and `npm run build` before committing. Use `npm run dev:demo` for manual UI checks when needed; never create synthetic production records.
+- Keep UI copy factual and concise. Explain unresolved decisions or concrete action consequences in the review screen. Do not add filler text or extra permission gates for each invoice in a selected batch.
+- Inspect `git diff --check`, the staged file list, and ignore rules before committing. Keep private files and live examples out of commits. Report any test failures or unpushed work plainly.
+
+## Local setup for Katie or another operator
+
+1. Install Git, GitHub CLI (`gh`), and Node.js 24 or newer. On macOS, `xcode-select --install` provides Git if it is missing; install `gh` through Homebrew (`brew install gh`) or GitHub's official installer. Verify with `git --version`, `gh --version`, and `node --version`.
+2. Sign in to GitHub in the browser, then run `gh auth login` and `gh auth setup-git` locally. Use the account that has repository access. Set a local commit identity with `git config user.name "Your Name"` and `git config user.email "your GitHub email"`. Verify remote access with `gh auth status` and `git remote -v`. Let the operator complete browser authentication; never ask for passwords or tokens in chat.
+3. Clone the repository or open the existing checkout, run `npm ci` and `npm run setup:browser`, then copy `.env.example` to `.env`. Help the operator fill `ENCOMPASS_URL`, `ENCOMPASS_USERNAME`, `ENCOMPASS_PASSWORD`, `INVOICE_APPROVE_URL`, `INVOICE_APPROVE_USERNAME`, and `INVOICE_APPROVE_PASSWORD` from their own accounts. Keep values quoted, use the actual company Encompass URL, and leave `.env` local and ignored. Do not place GitHub credentials in `.env` or commit it. Use `npm run check:connections` for a read-only connection check, or `npm run dev` to open the app. Connection checks may create normal view/audit events upstream.
+4. If access or environment setup fails, identify the missing command, access right, or variable name without displaying its value. Guide the operator through GitHub's browser login and the app's **Connections → Reconnect apps** flow as needed. Keep authenticated browser state local.
+
+## Git sync for every completed change
+
+- Before editing, run `git status --short --branch`, `git remote -v`, and `git fetch origin`. Inspect the remote default branch and new commits. When the worktree is clean, update with `git pull --ff-only` on the tracked branch. If there are local edits, preserve them and integrate upstream safely after committing or in a separate worktree; never reset, overwrite, or discard the operator's work.
+- After implementing and verifying, commit the relevant source, tests, and docs. Fetch again, integrate upstream changes with a fast-forward or a reviewed rebase/merge, resolve conflicts and rerun affected checks, then push to the tracked GitHub branch promptly. Never force-push a shared branch. Verify the push and branch status. If authentication, conflict, or policy blocks a push, leave the commit intact and give the operator the exact recovery step.
+- For ordinary requested changes, complete the push as part of the task. Do not leave a finished change only in the local worktree. Keep `main`/`master` aligned with its configured remote; use the repository's actual default branch name rather than assuming one.

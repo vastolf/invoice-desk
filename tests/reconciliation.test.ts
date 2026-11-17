@@ -60,7 +60,9 @@ test('customer chain identifies a new branch while other chains and unknown clie
   const branch = rows.find((r) => r.source.id === 'new-branch')!;
   assert.equal(branch.client.classification, 'same_chain');
   assert.equal(branch.workNeeded, 'submit');
-  assert.equal(branch.draft.storeId, 'store-1');
+  assert.equal(branch.draft.storeId, null);
+  assert.equal(branch.draft.deliveryMethod, '');
+  assert.equal(branch.classification, 'review');
   assert.equal(rows.find((r) => r.source.id === 'other')!.classification, 'excluded');
   assert.equal(rows.find((r) => r.source.id === 'other')!.workNeeded, 'none');
   assert.equal(rows.find((r) => r.source.id === 'unknown')!.classification, 'unclassified');
@@ -93,6 +95,55 @@ test('ambiguous delivery history remains a specific exception instead of choosin
   assert.equal(r.classification, 'review');
   assert.equal(r.draft.deliveryMethod, '');
   assert.ok(r.issues.some((i) => i.includes('multiple delivery methods')));
+});
+
+test('invoice memo final store overrides a single historical hub destination without changing the route', () => {
+  const s = fixture();
+  const history = s.portals.find((p) => p.invoiceNumber === s.sources[18].invoiceNumber)!;
+  history.deliveryMethod = 'RCP Northside';
+  s.options.stores[0].name = 'Northside Sac';
+  s.options.stores[1].name = 'Napa';
+  s.sources[0].memo = 'Final store: Napa';
+  const r = find(s);
+  assert.equal(r.draft.deliveryMethod, 'RCP Northside');
+  assert.equal(r.draft.storeId, 'store-2');
+  assert.ok(r.evidence.some((e) => e.field === 'store' && e.method === 'memo_store'));
+});
+
+test('an invoice memo with a final store does not establish the distribution route', () => {
+  const s = fixture();
+  const history = s.portals.find((p) => p.invoiceNumber === s.sources[18].invoiceNumber)!;
+  history.deliveryMethod = 'RCP Northside';
+  s.sources.push(copySource(s.sources[18], { id: 'older-direct', invoiceNumber: 'OLDER-1' }));
+  s.portals.push({
+    ...history,
+    id: 'older-direct-portal',
+    invoiceNumber: 'OLDER-1',
+    deliveryMethod: 'Direct to Store',
+  });
+  s.options.stores[1].name = 'Napa';
+  s.sources[0].memo = 'Final store: Napa';
+  const r = find(s);
+  assert.equal(r.draft.deliveryMethod, '');
+  assert.equal(r.draft.storeId, null);
+  assert.equal(r.classification, 'review');
+});
+
+test('MSRP brands require hub-route review instead of reusing direct-to-store history', () => {
+  for (const brand of ['Emerald Sky', "Uncle Ernie's"]) {
+    const s = fixture();
+    s.options.brands[0].name = brand;
+    s.products![0].name = `${brand} sample product`;
+    s.products![0].supplierName = brand;
+    s.sources[0].memo = 'Final store: Napa';
+    const r = find(s);
+    assert.deepEqual(r.draft.brandIds, ['brand-1']);
+    assert.equal(r.classification, 'review');
+    assert.ok(r.issues.some((i) => i.includes('Warehouse sticker overlay')));
+    assert.ok(r.issues.some((i) => i.includes('Direct-to-store history conflicts')));
+    assert.equal(r.draft.deliveryMethod, '');
+    assert.equal(r.draft.storeId, null);
+  }
 });
 
 test('zero quantity and zero value historical lines do not teach an incorrect brand', () => {
