@@ -1,0 +1,157 @@
+{
+  "observed_on": "2026-11-13",
+  "status": "implemented_observed_interfaces",
+  "notice": "Observed private application interfaces; revalidate against the authenticated deployment. An operator-selected live submission and sales-task completion were verified; credit-application writes remain outside this app.",
+  "encompass": {
+    "origin_env": "ENCOMPASS_URL",
+    "dashboard_id": "207235",
+    "invoice_table_dashboard_id": "100100",
+    "invoice_view_tab_id": "158170",
+    "read_transport": "/api",
+    "observed_read_commands": ["TableView", "FusionView"],
+    "read_response_shapes": ["Export.Table.Field", "Export.Table.Row", "Export.Report.Row"],
+    "browser_read_interface": "ECP.EC_TableView with AddColumn, AddFilter, SetMaxRecords, GetResults; ECP.EC_Recordset.ItemDBValue",
+    "candidate_fields": [
+      "InvoiceID",
+      "InvoiceNum",
+      "InvoiceTotal",
+      "TimeCreated",
+      "TimeUpdated",
+      "CustomerID",
+      "SalesTaskID",
+      "Memo",
+      "Status",
+      "Public PDF Link",
+      "Invoice_LoadSheet^LoadSheet.Date",
+      "Invoice_LoadSheet^LoadSheet.LocationID",
+      "Invoice_SalesTasks^Tasks.TaskStatusID"
+    ],
+    "date_warning": "Date_DBValue may be a LoadSheetID foreign key. Use the explicit joined load-sheet date for planned delivery. Source creation date is not a universally verified portal invoice-date rule.",
+    "known_task_statuses": {
+      "1": "Assigned",
+      "4": "Completed",
+      "19": "Invoice Not Complete-Do Not Pick"
+    },
+    "completion_writes_observed_in_client_code_only": [
+      {
+        "operation": "SalesExeAPI_CreateTask",
+        "purpose": "Create missing Sales Invoice task, objective 38, initial status 1"
+      },
+      {
+        "operation": "Kiva_CRM_Public_UpdateSalesTaskID",
+        "purpose": "Link newly created task to invoice"
+      },
+      {
+        "operation": "UpdateTaskStatus",
+        "fields": {
+          "TaskStatusID": "4",
+          "TaskID": "current linked task ID"
+        }
+      }
+    ],
+    "completion_guards": [
+      "Current user permission",
+      "Positive extended-price total across customer/date invoices",
+      "Location order minimum",
+      "Missing or changed task link",
+      "Post-action readback"
+    ],
+    "do_not_persist": [
+      "Opaque generated PDF link tokens",
+      "Raw rendered HTML",
+      "Full API responses",
+      "Cookies"
+    ]
+  },
+  "invoiceapprove": {
+    "origin_env": "INVOICE_APPROVE_URL",
+    "app_version_observed": "2.8",
+    "backend": "Supabase Auth + PostgREST + Storage + RPC; derive current deployment configuration from the app",
+    "read_resources_observed": [
+      "invoices",
+      "invoice_brands",
+      "invoice_credit_memos",
+      "invoice_notes",
+      "distributors",
+      "distributor_brands",
+      "stores",
+      "user_brands",
+      "user_distributors",
+      "user_stores",
+      "user_roles",
+      "profiles",
+      "credit_memos"
+    ],
+    "privacy_note": "Default UI queries join profiles/full_name/email. Implement minimal selects where feasible and never persist raw responses.",
+    "automatic_view_event": "Opening invoice details can POST to invoice_views; this was observed during browsing.",
+    "duplicate_rpc_observed_in_client_code": {
+      "name": "invoice_number_taken_for",
+      "arguments": ["_distributor_id", "_invoice_number"],
+      "unknowns": [
+        "Archived inclusion",
+        "Case canonicalization",
+        "Concurrency guarantees beyond submit_invoice enforcement"
+      ]
+    },
+    "storage": {
+      "bucket": "invoices",
+      "object_path_pattern": "<distributor-id>/<random-uuid><extension>",
+      "client_max_file_bytes": 10485760,
+      "client_max_files": 5,
+      "advertised_types": ["PDF", "DOC", "DOCX", "PNG", "JPG"]
+    },
+    "submission_rpc_observed_in_client_code": {
+      "name": "submit_invoice",
+      "returns": "created invoice ID",
+      "arguments": {
+        "_distributor_id": "authenticated account's permitted distributor ID",
+        "_store_id": "reviewed store ID or null for eligible warehouse delivery",
+        "_delivery_method": "one of delivery_methods",
+        "_invoice_number": "trimmed source invoice number",
+        "_invoice_date": "reviewed business date, YYYY-MM-DD",
+        "_amount": "gross numeric USD amount before credits; zero allowed",
+        "_submission_notes": "optional operator notes or null",
+        "_pdf_path": "first uploaded attachment object path",
+        "_attachment_paths": "array of uploaded object paths",
+        "_brand_ids": "nonempty array of currently assigned brand IDs",
+        "_delivery_date": "reviewed delivery date, YYYY-MM-DD",
+        "_duplicate_override": false,
+        "_duplicate_override_reason": null
+      }
+    },
+    "optional_credit_write_observed_in_client_code": {
+      "name": "apply_credit_to_invoice",
+      "arguments": ["_invoice_id", "_memo_id", "_amount"],
+      "timing": "after successful invoice submission; failures do not imply invoice submission failed",
+      "initial_implementation": "manual credit handling"
+    },
+    "delivery_methods": ["RCP Northside", "CK Distribution", "Direct to Store"],
+    "store_optional_for": ["CK Distribution"],
+    "invoice_number_client_regex": "^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$",
+    "independent_workflow_fields": [
+      "status",
+      "credit_status",
+      "credit_amount",
+      "intake_status",
+      "accepted_at",
+      "waiting_on_rep",
+      "amount_revised_at",
+      "payment_date",
+      "archived_at"
+    ],
+    "duplicate_lookup_requirements": [
+      "Explicit distributor scope",
+      "Archived and paid records",
+      "No recent-window restriction",
+      "Paginate",
+      "Remote readback after ambiguous write outcomes"
+    ],
+    "do_not_persist": [
+      "Auth access/refresh tokens",
+      "Storage authorization headers",
+      "Profile names/emails",
+      "Invoice/credit notes",
+      "PDF bytes"
+    ]
+  }
+}
